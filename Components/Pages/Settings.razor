@@ -1,0 +1,283 @@
+@page "/settings"
+@using AILearningApp.Models
+@using AILearningApp.Services
+@using Microsoft.Extensions.Options
+@inject IOptions<AzureOpenAIConfig> ConfigOptions
+@inject IProgressService ProgressService
+@inject IAzureOpenAIService OpenAIService
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@rendermode InteractiveServer
+
+<PageTitle>Settings - AI Learning Hub</PageTitle>
+
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Home</a></li>
+            <li class="breadcrumb-item active">Settings</li>
+        </ol>
+    </nav>
+
+    <h1 class="h2 mb-4">
+        <i class="bi bi-gear me-2"></i>Settings
+    </h1>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cloud me-2"></i>Azure OpenAI Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (OpenAIService.IsConfigured)
+                    {
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Connected!</strong> Azure OpenAI is configured and ready for labs.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Not Configured.</strong> Add your Azure OpenAI credentials to enable interactive labs.
+                        </div>
+                    }
+
+                    <p class="text-muted small">
+                        Configure your Azure OpenAI credentials by updating appsettings.json or setting environment variables.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label">Endpoint</label>
+                        <input type="text" class="form-control" value="@_endpoint" disabled 
+                               placeholder="https://your-resource.openai.azure.com/" />
+                        <div class="form-text">Set via AzureOpenAI:Endpoint</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">API Key</label>
+                        <input type="password" class="form-control" value="@(_apiKeyMasked)" disabled 
+                               placeholder="Your API Key" />
+                        <div class="form-text">Set via AzureOpenAI:ApiKey</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Deployment Name</label>
+                        <input type="text" class="form-control" value="@_deploymentName" disabled 
+                               placeholder="gpt-4" />
+                        <div class="form-text">Set via AzureOpenAI:DeploymentName</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">API Version</label>
+                        <input type="text" class="form-control" value="@_apiVersion" disabled />
+                        <div class="form-text">Set via AzureOpenAI:ApiVersion</div>
+                    </div>
+
+                    @if (OpenAIService.IsConfigured)
+                    {
+                        <button class="btn btn-outline-primary" @onclick="TestConnection" disabled="@_isTesting">
+                            @if (_isTesting)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                                <span>Testing...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-lightning me-2"></i>
+                                <span>Test Connection</span>
+                            }
+                        </button>
+
+                        @if (!string.IsNullOrEmpty(_testResult))
+                        {
+                            <div class="alert @(_testSuccess ? "alert-success" : "alert-danger") mt-3">
+                                @_testResult
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-code me-2"></i>Configuration Guide
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <h6>Option 1: appsettings.json</h6>
+                    <pre class="bg-dark text-light p-3 rounded"><code>{
+  "AzureOpenAI": {
+    "Endpoint": "https://your-resource.openai.azure.com/",
+    "ApiKey": "your-api-key-here",
+    "DeploymentName": "gpt-4",
+    "ApiVersion": "2024-08-01-preview"
+  }
+}</code></pre>
+
+                    <h6 class="mt-4">Option 2: Environment Variables</h6>
+                    <pre class="bg-dark text-light p-3 rounded"><code>AzureOpenAI__Endpoint=https://your-resource.openai.azure.com/
+AzureOpenAI__ApiKey=your-api-key-here
+AzureOpenAI__DeploymentName=gpt-4
+AzureOpenAI__ApiVersion=2024-08-01-preview</code></pre>
+
+                    <h6 class="mt-4">Option 3: User Secrets (Development)</h6>
+                    <pre class="bg-dark text-light p-3 rounded"><code>dotnet user-secrets set "AzureOpenAI:ApiKey" "your-api-key-here"</code></pre>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2"></i>Learning Progress
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Your learning progress is stored in your browser's local storage.</p>
+                    
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-danger" @onclick="ShowResetConfirm">
+                            <i class="bi bi-trash me-2"></i>Reset All Progress
+                        </button>
+                    </div>
+
+                    @if (_showResetConfirm)
+                    {
+                        <div class="alert alert-danger mt-3">
+                            <p class="mb-2"><strong>Are you sure?</strong> This will delete all your progress and cannot be undone.</p>
+                            <button class="btn btn-danger btn-sm me-2" @onclick="ResetProgress">Yes, Reset Everything</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelReset">Cancel</button>
+                        </div>
+                    }
+
+                    @if (_resetComplete)
+                    {
+                        <div class="alert alert-success mt-3">
+                            <i class="bi bi-check-circle me-2"></i>Progress has been reset.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-link-45deg me-2"></i>Resources
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <a href="https://portal.azure.com" target="_blank" class="text-decoration-none">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>Azure Portal
+                            </a>
+                        </li>
+                        <li class="mb-2">
+                            <a href="https://learn.microsoft.com/azure/ai-services/openai/" target="_blank" class="text-decoration-none">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>Azure OpenAI Documentation
+                            </a>
+                        </li>
+                        <li class="mb-2">
+                            <a href="https://oai.azure.com/" target="_blank" class="text-decoration-none">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>Azure OpenAI Studio
+                            </a>
+                        </li>
+                        <li>
+                            <a href="https://learn.microsoft.com/azure/ai-services/openai/quickstart" target="_blank" class="text-decoration-none">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>Quickstart Guide
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _endpoint = string.Empty;
+    private string _apiKeyMasked = string.Empty;
+    private string _deploymentName = string.Empty;
+    private string _apiVersion = string.Empty;
+    
+    private bool _isTesting = false;
+    private string _testResult = string.Empty;
+    private bool _testSuccess = false;
+    
+    private bool _showResetConfirm = false;
+    private bool _resetComplete = false;
+
+    protected override void OnInitialized()
+    {
+        var config = ConfigOptions.Value;
+        _endpoint = config.Endpoint;
+        _deploymentName = config.DeploymentName;
+        _apiVersion = config.ApiVersion;
+        
+        if (!string.IsNullOrEmpty(config.ApiKey))
+        {
+            _apiKeyMasked = config.ApiKey.Length > 8 
+                ? config.ApiKey.Substring(0, 4) + "****" + config.ApiKey.Substring(config.ApiKey.Length - 4) 
+                : "********";
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        _isTesting = true;
+        _testResult = string.Empty;
+
+        try
+        {
+            var result = await OpenAIService.SendChatCompletionAsync(
+                "You are a helpful assistant.",
+                "Say 'Connection successful!' and nothing else.",
+                new Dictionary<string, object> { { "max_tokens", 50 } });
+
+            if (result.IsSuccess)
+            {
+                _testSuccess = true;
+                _testResult = "Connection successful! Response: " + result.Response;
+            }
+            else
+            {
+                _testSuccess = false;
+                _testResult = "Connection failed: " + result.ErrorMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _testSuccess = false;
+            _testResult = "Error: " + ex.Message;
+        }
+        finally
+        {
+            _isTesting = false;
+        }
+    }
+
+    private void ShowResetConfirm()
+    {
+        _showResetConfirm = true;
+        _resetComplete = false;
+    }
+
+    private void CancelReset()
+    {
+        _showResetConfirm = false;
+    }
+
+    private async Task ResetProgress()
+    {
+        await ProgressService.ResetProgressAsync();
+        _showResetConfirm = false;
+        _resetComplete = true;
+    }
+}

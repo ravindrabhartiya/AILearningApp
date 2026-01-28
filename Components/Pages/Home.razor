@@ -1,0 +1,344 @@
+﻿@page "/"
+@using AILearningApp.Models
+@using AILearningApp.Services
+@inject IContentService ContentService
+@inject IProgressService ProgressService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>AI Learning Hub</PageTitle>
+
+<div class="container py-4">
+    <div class="text-center mb-4">
+        <h1 class="display-5 fw-bold mb-2">
+            <i class="bi bi-stars text-warning me-2"></i>
+            AI Learning Hub
+        </h1>
+        <p class="lead text-muted">
+            Master Generative AI from primitives to production. Click any element to start learning.
+        </p>
+        @if (_completedCount > 0)
+        {
+            <div class="d-inline-block bg-body-tertiary rounded-pill px-4 py-2">
+                <span class="fw-medium">Progress: </span>
+                <span class="text-primary fw-bold">@_completedCount / @_totalCount</span>
+                <span class="text-muted"> elements completed</span>
+            </div>
+        }
+    </div>
+
+    <!-- Grid Legend -->
+    <div class="d-flex justify-content-center gap-4 mb-4 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <div class="legend-box bg-secondary opacity-25"></div>
+            <span class="small text-muted">Not Started</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div class="legend-box bg-primary"></div>
+            <span class="small text-muted">In Progress</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div class="legend-box bg-success"></div>
+            <span class="small text-muted">Completed</span>
+        </div>
+    </div>
+
+    <!-- AI Learning Grid -->
+    <div class="ai-grid-container">
+        <!-- Column Headers -->
+        <div class="grid-header"></div>
+        <div class="grid-header category-header reactive">Reactive</div>
+        <div class="grid-header category-header retrieval">Retrieval</div>
+        <div class="grid-header category-header orchestration">Orchestration</div>
+        <div class="grid-header category-header validation">Validation</div>
+        <div class="grid-header category-header models">Models</div>
+
+        <!-- Row 1: Primitives -->
+        <div class="row-label primitives">Primitives</div>
+        @RenderGridElement("Prompts", "prompts", "reactive")
+        @RenderGridElement("Embeddings", "embeddings", "retrieval")
+        <div class="grid-empty"></div>
+        <div class="grid-empty"></div>
+        @RenderGridElement("LLM", "llm-basics", "models")
+
+        <!-- Row 2: Compositions -->
+        <div class="row-label compositions">Compositions</div>
+        @RenderGridElement("Function Calling", "function-calling", "reactive")
+        @RenderGridElement("Vector Search", "vector-search", "retrieval")
+        @RenderGridElement("RAG", "rag", "orchestration")
+        @RenderGridElement("Guardrails", "guardrails", "validation")
+        @RenderGridElement("Multimodal", "multimodal", "models")
+
+        <!-- Row 3: Deployment -->
+        <div class="row-label deployment">Deployment</div>
+        @RenderGridElement("Agents", "ai-agents", "reactive")
+        @RenderGridElement("Fine-tuning", "fine-tuning", "retrieval")
+        @RenderGridElement("Frameworks", "frameworks", "orchestration")
+        @RenderGridElement("Red-teaming", "red-teaming", "validation")
+        @RenderGridElement("Small Models", "small-models", "models")
+
+        <!-- Row 4: Emerging -->
+        <div class="row-label emerging">Emerging</div>
+        @RenderGridElement("Multi-agent", "multi-agent", "reactive")
+        @RenderGridElement("Synthetic Data", "synthetic-data", "retrieval")
+        <div class="grid-empty"></div>
+        @RenderGridElement("Interpretability", "interpretability", "validation")
+        @RenderGridElement("Thinking Models", "thinking-models", "models")
+    </div>
+
+    <!-- Connection Lines Diagram -->
+    <div class="text-center mt-4 text-muted small">
+        <p><i class="bi bi-info-circle me-1"></i> Elements are connected: Prompts + Embeddings + Vector → RAG → Agents</p>
+    </div>
+</div>
+
+<style>
+    .legend-box {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+    }
+
+    .ai-grid-container {
+        display: grid;
+        grid-template-columns: 140px repeat(5, 1fr);
+        gap: 12px;
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    .grid-header {
+        text-align: center;
+        font-weight: 700;
+        padding: 14px 10px;
+        font-size: 1.1rem;
+    }
+
+    .category-header.reactive { color: #f59e0b; }
+    .category-header.retrieval { color: #f59e0b; }
+    .category-header.orchestration { color: #f59e0b; }
+    .category-header.validation { color: #f59e0b; }
+    .category-header.models { color: #a855f7; }
+
+    .row-label {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 16px;
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-align: right;
+    }
+
+    .row-label.primitives { color: #22d3ee; }
+    .row-label.compositions { color: #22d3ee; }
+    .row-label.deployment { color: #22d3ee; }
+    .row-label.emerging { color: #22d3ee; }
+
+    .grid-element {
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        min-height: 120px;
+        padding: 12px;
+        text-align: center;
+    }
+
+    .grid-element:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .grid-element .name {
+        font-size: 1.15rem;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    .grid-element.reactive { border-color: #f59e0b; }
+    .grid-element.reactive .name { color: #f59e0b; }
+
+    .grid-element.retrieval { border-color: #f59e0b; }
+    .grid-element.retrieval .name { color: #f59e0b; }
+
+    .grid-element.orchestration { border-color: #f59e0b; }
+    .grid-element.orchestration .name { color: #f59e0b; }
+
+    .grid-element.validation { border-color: #f59e0b; }
+    .grid-element.validation .name { color: #f59e0b; }
+
+    .grid-element.models { border-color: #a855f7; }
+    .grid-element.models .name { color: #a855f7; }
+
+    .grid-element.not-started {
+        opacity: 0.4;
+        background: transparent;
+    }
+
+    .grid-element.in-progress {
+        background: rgba(59, 130, 246, 0.15);
+        border-width: 3px;
+    }
+
+    .grid-element.completed {
+        background: rgba(34, 197, 94, 0.15);
+        position: relative;
+    }
+
+    .grid-element.completed::after {
+        content: '✓';
+        position: absolute;
+        top: 4px;
+        right: 6px;
+        font-size: 0.7rem;
+        color: #22c55e;
+    }
+
+    .grid-empty {
+        background: rgba(128, 128, 128, 0.1);
+        border-radius: 8px;
+        min-height: 100px;
+    }
+
+    @@media (max-width: 768px) {
+        .ai-grid-container {
+            grid-template-columns: 90px repeat(5, 1fr);
+            gap: 6px;
+        }
+        
+        .grid-element {
+            min-height: 80px;
+            padding: 8px;
+        }
+        
+        .grid-element .name {
+            font-size: 0.85rem;
+        }
+        
+        .row-label, .grid-header {
+            font-size: 0.9rem;
+        }
+    }
+</style>
+
+@code {
+    private UserProgress? _progress;
+    private int _completedCount = 0;
+    private int _totalCount = 20; // Total grid elements
+
+    private Dictionary<string, ElementStatus> _elementStatus = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _progress = await ProgressService.GetProgressAsync();
+        InitializeElementStatus();
+        _completedCount = _elementStatus.Count(e => e.Value == ElementStatus.Completed);
+    }
+
+    private void InitializeElementStatus()
+    {
+        // Map grid elements to modules/lessons
+        var elementMappings = new Dictionary<string, string>
+        {
+            { "prompts", "prompt-engineering" },
+            { "embeddings", "rag" },
+            { "llm-basics", "foundations" },
+            { "function-calling", "ai-agents" },
+            { "vector-search", "rag" },
+            { "rag", "rag" },
+            { "guardrails", "advanced-patterns" },
+            { "multimodal", "foundations" },
+            { "ai-agents", "ai-agents" },
+            { "fine-tuning", "fine-tuning" },
+            { "frameworks", "ai-agents" },
+            { "red-teaming", "advanced-patterns" },
+            { "small-models", "fine-tuning" },
+            { "multi-agent", "ai-agents" },
+            { "synthetic-data", "fine-tuning" },
+            { "interpretability", "advanced-patterns" },
+            { "thinking-models", "advanced-patterns" }
+        };
+
+        foreach (var mapping in elementMappings)
+        {
+            var status = GetElementStatus(mapping.Value);
+            _elementStatus[mapping.Key] = status;
+        }
+    }
+
+    private ElementStatus GetElementStatus(string moduleId)
+    {
+        if (_progress?.ModuleProgress.TryGetValue(moduleId, out var moduleProgress) == true)
+        {
+            if (moduleProgress.IsCompleted)
+                return ElementStatus.Completed;
+            if (moduleProgress.IsStarted)
+                return ElementStatus.InProgress;
+        }
+        return ElementStatus.NotStarted;
+    }
+
+    private string GetStatusClass(string elementId)
+    {
+        if (_elementStatus.TryGetValue(elementId, out var status))
+        {
+            return status switch
+            {
+                ElementStatus.Completed => "completed",
+                ElementStatus.InProgress => "in-progress",
+                _ => "not-started"
+            };
+        }
+        return "not-started";
+    }
+
+    private string GetModuleLink(string elementId)
+    {
+        var moduleMapping = new Dictionary<string, string>
+        {
+            { "prompts", "/module/prompt-engineering" },
+            { "embeddings", "/module/rag" },
+            { "llm-basics", "/module/foundations" },
+            { "function-calling", "/module/ai-agents" },
+            { "vector-search", "/module/rag" },
+            { "rag", "/module/rag" },
+            { "guardrails", "/module/advanced-patterns" },
+            { "multimodal", "/module/foundations" },
+            { "ai-agents", "/module/ai-agents" },
+            { "fine-tuning", "/module/fine-tuning" },
+            { "frameworks", "/module/ai-agents" },
+            { "red-teaming", "/module/advanced-patterns" },
+            { "small-models", "/module/fine-tuning" },
+            { "multi-agent", "/module/ai-agents" },
+            { "synthetic-data", "/module/fine-tuning" },
+            { "interpretability", "/module/advanced-patterns" },
+            { "thinking-models", "/module/advanced-patterns" }
+        };
+
+        return moduleMapping.GetValueOrDefault(elementId, "/modules");
+    }
+
+    private RenderFragment RenderGridElement(string name, string elementId, string category) => __builder =>
+    {
+        var statusClass = GetStatusClass(elementId);
+        var link = GetModuleLink(elementId);
+        
+        <a href="@link" class="grid-element @category @statusClass" title="@name">
+            <span class="name">@name</span>
+        </a>
+    };
+
+    private enum ElementStatus
+    {
+        NotStarted,
+        InProgress,
+        Completed
+    }
+}

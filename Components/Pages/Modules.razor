@@ -1,0 +1,152 @@
+@page "/modules"
+@using AILearningApp.Models
+@using AILearningApp.Services
+@inject IContentService ContentService
+@inject IProgressService ProgressService
+
+<PageTitle>Learning Modules - AI Learning Hub</PageTitle>
+
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Home</a></li>
+            <li class="breadcrumb-item active">Modules</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">
+                <i class="bi bi-collection me-2 text-primary"></i>
+                Learning Modules
+            </h1>
+            <p class="text-muted mb-0">@(_modules?.Count ?? 0) modules available</p>
+        </div>
+        <div class="d-flex gap-2">
+            @foreach (DifficultyLevel level in Enum.GetValues<DifficultyLevel>())
+            {
+                <button class="btn btn-sm @(_filterLevel == level ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => FilterByLevel(level)">
+                    @level
+                </button>
+            }
+            <button class="btn btn-sm @(_filterLevel == null ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => FilterByLevel(null)">
+                All
+            </button>
+        </div>
+    </div>
+
+    @if (_filteredModules != null)
+    {
+        <div class="row g-4">
+            @foreach (var module in _filteredModules)
+            {
+                var moduleProgress = GetModuleProgress(module);
+                var completedLessons = moduleProgress.LessonProgress.Count(l => l.Value.IsCompleted);
+                
+                <div class="col-12">
+                    <div class="card module-list-card @(moduleProgress.IsCompleted ? "border-success" : "")">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <div class="module-icon-lg rounded-3 p-3 bg-primary bg-opacity-10">
+                                        <i class="bi @module.Icon fs-2 text-primary"></i>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <h5 class="mb-0">@module.Title</h5>
+                                        <span class="badge @GetLevelBadgeClass(module.Level)">@module.Level</span>
+                                        @if (moduleProgress.IsCompleted)
+                                        {
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-check-circle me-1"></i>Completed
+                                            </span>
+                                        }
+                                    </div>
+                                    <p class="text-muted mb-2">@module.Description</p>
+                                    <div class="d-flex align-items-center text-muted small gap-3">
+                                        <span><i class="bi bi-clock me-1"></i>@module.EstimatedMinutes min</span>
+                                        <span><i class="bi bi-journal-text me-1"></i>@module.Lessons.Count lessons</span>
+                                        @if (module.Prerequisites.Any())
+                                        {
+                                            <span><i class="bi bi-diagram-3 me-1"></i>@module.Prerequisites.Count prerequisites</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    @if (moduleProgress.IsStarted && !moduleProgress.IsCompleted)
+                                    {
+                                        <div class="text-end mb-2">
+                                            <span class="small text-muted">@completedLessons / @module.Lessons.Count lessons</span>
+                                        </div>
+                                        <div class="progress mb-2" style="width: 150px; height: 6px;">
+                                            <div class="progress-bar" style="width: @((double)completedLessons / module.Lessons.Count * 100)%"></div>
+                                        </div>
+                                    }
+                                    <a href="/module/@module.Id" class="btn @(moduleProgress.IsCompleted ? "btn-outline-success" : "btn-primary")">
+                                        @if (moduleProgress.IsCompleted)
+                                        {
+                                            <text>Review</text>
+                                        }
+                                        else if (moduleProgress.IsStarted)
+                                        {
+                                            <text>Continue</text>
+                                        }
+                                        else
+                                        {
+                                            <text>Start</text>
+                                        }
+                                        <i class="bi bi-arrow-right ms-2"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<LearningModule>? _modules;
+    private List<LearningModule>? _filteredModules;
+    private UserProgress? _progress;
+    private DifficultyLevel? _filterLevel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _modules = await ContentService.GetAllModulesAsync();
+        _filteredModules = _modules;
+        _progress = await ProgressService.GetProgressAsync();
+    }
+
+    private void FilterByLevel(DifficultyLevel? level)
+    {
+        _filterLevel = level;
+        _filteredModules = level.HasValue 
+            ? _modules?.Where(m => m.Level == level.Value).ToList()
+            : _modules;
+    }
+
+    private ModuleProgress GetModuleProgress(LearningModule module)
+    {
+        if (_progress?.ModuleProgress.TryGetValue(module.Id, out var progress) == true)
+        {
+            return progress;
+        }
+        return new ModuleProgress { ModuleId = module.Id };
+    }
+
+    private string GetLevelBadgeClass(DifficultyLevel level) => level switch
+    {
+        DifficultyLevel.Novice => "bg-success-subtle text-success",
+        DifficultyLevel.Beginner => "bg-info-subtle text-info",
+        DifficultyLevel.Intermediate => "bg-warning-subtle text-warning",
+        DifficultyLevel.Advanced => "bg-danger-subtle text-danger",
+        DifficultyLevel.Expert => "bg-dark text-white",
+        _ => "bg-secondary"
+    };
+}

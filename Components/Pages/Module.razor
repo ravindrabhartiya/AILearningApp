@@ -1,0 +1,297 @@
+@page "/module/{ModuleId}"
+@using AILearningApp.Models
+@using AILearningApp.Services
+@inject IContentService ContentService
+@inject IProgressService ProgressService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_module?.Title ?? "Module") - AI Learning Hub</PageTitle>
+
+@if (_module != null)
+{
+    <div class="container py-4">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item"><a href="/modules">Modules</a></li>
+                <li class="breadcrumb-item active">@_module.Title</li>
+            </ol>
+        </nav>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="module-header mb-4">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <div class="module-icon-lg rounded-3 p-3 bg-primary bg-opacity-10">
+                            <i class="bi @_module.Icon fs-2 text-primary"></i>
+                        </div>
+                        <div>
+                            <h1 class="h2 mb-1">@_module.Title</h1>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge @GetLevelBadgeClass(_module.Level)">@_module.Level</span>
+                                <span class="text-muted small">
+                                    <i class="bi bi-clock me-1"></i>@_module.EstimatedMinutes min
+                                </span>
+                                <span class="text-muted small">
+                                    <i class="bi bi-journal-text me-1"></i>@_module.Lessons.Count lessons
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="lead text-muted">@_module.Description</p>
+
+                    @if (_moduleProgress.IsStarted)
+                    {
+                        var completedCount = _moduleProgress.LessonProgress.Count(l => l.Value.IsCompleted);
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar @(_moduleProgress.IsCompleted ? "bg-success" : "bg-primary")" 
+                                 style="width: @((double)completedCount / _module.Lessons.Count * 100)%"></div>
+                        </div>
+                        <p class="small text-muted">@completedCount of @_module.Lessons.Count lessons completed</p>
+                    }
+                </div>
+
+                <h3 class="h5 mb-3">
+                    <i class="bi bi-list-check me-2"></i>Lessons
+                </h3>
+
+                <div class="lessons-list">
+                    @foreach (var lesson in _module.Lessons.OrderBy(l => l.Order))
+                    {
+                        var lessonProgress = GetLessonProgress(lesson.Id);
+                        var isLocked = false; // Could implement prerequisite logic
+
+                        <div class="card mb-3 lesson-card @(lessonProgress.IsCompleted ? "border-success" : lessonProgress.IsStarted ? "border-primary" : "")">
+                            <div class="card-body">
+                                <div class="row align-items-center">
+                                    <div class="col-auto">
+                                        <div class="lesson-number rounded-circle d-flex align-items-center justify-content-center
+                                                    @(lessonProgress.IsCompleted ? "bg-success text-white" : lessonProgress.IsStarted ? "bg-primary text-white" : "bg-body-tertiary text-muted")">
+                                            @if (lessonProgress.IsCompleted)
+                                            {
+                                                <i class="bi bi-check-lg"></i>
+                                            }
+                                            else
+                                            {
+                                                @lesson.Order
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <h5 class="mb-1">@lesson.Title</h5>
+                                        <p class="text-muted small mb-1">@lesson.Description</p>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge @GetLessonTypeBadgeClass(lesson.Type)">
+                                                <i class="bi @GetLessonTypeIcon(lesson.Type) me-1"></i>@lesson.Type
+                                            </span>
+                                            <span class="text-muted small">
+                                                <i class="bi bi-clock me-1"></i>@lesson.EstimatedMinutes min
+                                            </span>
+                                            @if (lesson.Lab != null)
+                                            {
+                                                <span class="badge bg-warning-subtle text-warning">
+                                                    <i class="bi bi-terminal me-1"></i>Includes Lab
+                                                </span>
+                                            }
+                                            @if (lesson.Quiz != null)
+                                            {
+                                                <span class="badge bg-info-subtle text-info">
+                                                    <i class="bi bi-question-circle me-1"></i>Quiz
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="col-auto">
+                                        <a href="/learn/@_module.Id/@lesson.Id" 
+                                           class="btn @(lessonProgress.IsCompleted ? "btn-outline-success" : "btn-primary")">
+                                            @if (lessonProgress.IsCompleted)
+                                            {
+                                                <text>Review</text>
+                                            }
+                                            else if (lessonProgress.IsStarted)
+                                            {
+                                                <text>Continue</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Start</text>
+                                            }
+                                            <i class="bi bi-arrow-right ms-2"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-header bg-transparent">
+                        <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Module Info</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (_module.Prerequisites.Any())
+                        {
+                            <h6 class="text-muted small mb-2">Prerequisites</h6>
+                            <ul class="list-unstyled mb-3">
+                                @foreach (var prereqId in _module.Prerequisites)
+                                {
+                                    var prereq = _allModules?.FirstOrDefault(m => m.Id == prereqId);
+                                    if (prereq != null)
+                                    {
+                                        var prereqProgress = GetModuleProgress(prereqId);
+                                        <li class="mb-1">
+                                            <a href="/module/@prereqId" class="text-decoration-none">
+                                                @if (prereqProgress.IsCompleted)
+                                                {
+                                                    <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-circle text-muted me-1"></i>
+                                                }
+                                                @prereq.Title
+                                            </a>
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        }
+
+                        <h6 class="text-muted small mb-2">What You'll Learn</h6>
+                        <ul class="small">
+                            @foreach (var lesson in _module.Lessons.Take(5))
+                            {
+                                <li>@lesson.Title</li>
+                            }
+                            @if (_module.Lessons.Count > 5)
+                            {
+                                <li class="text-muted">...and @(_module.Lessons.Count - 5) more</li>
+                            }
+                        </ul>
+
+                        <hr />
+
+                        @{
+                            var firstIncompleteLesson = _module.Lessons
+                                .OrderBy(l => l.Order)
+                                .FirstOrDefault(l => !GetLessonProgress(l.Id).IsCompleted);
+                        }
+                        
+                        @if (firstIncompleteLesson != null)
+                        {
+                            <a href="/learn/@_module.Id/@firstIncompleteLesson.Id" class="btn btn-primary w-100">
+                                <i class="bi bi-play-fill me-2"></i>
+                                @(_moduleProgress.IsStarted ? "Continue Learning" : "Start Module")
+                            </a>
+                        }
+                        else
+                        {
+                            <div class="text-center text-success">
+                                <i class="bi bi-trophy fs-1"></i>
+                                <p class="mt-2 mb-0">Module Completed!</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_loading)
+{
+    <div class="container py-5 text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container py-5 text-center">
+        <h2>Module Not Found</h2>
+        <p class="text-muted">The requested module could not be found.</p>
+        <a href="/modules" class="btn btn-primary">Browse Modules</a>
+    </div>
+}
+
+<style>
+    .lesson-number {
+        width: 40px;
+        height: 40px;
+        font-weight: 600;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string ModuleId { get; set; } = string.Empty;
+
+    private LearningModule? _module;
+    private List<LearningModule>? _allModules;
+    private UserProgress? _progress;
+    private ModuleProgress _moduleProgress = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allModules = await ContentService.GetAllModulesAsync();
+        _module = await ContentService.GetModuleByIdAsync(ModuleId);
+        _progress = await ProgressService.GetProgressAsync();
+        
+        if (_progress?.ModuleProgress.TryGetValue(ModuleId, out var moduleProgress) == true)
+        {
+            _moduleProgress = moduleProgress;
+        }
+        
+        _loading = false;
+    }
+
+    private LessonProgress GetLessonProgress(string lessonId)
+    {
+        if (_moduleProgress.LessonProgress.TryGetValue(lessonId, out var progress))
+        {
+            return progress;
+        }
+        return new LessonProgress { LessonId = lessonId };
+    }
+
+    private ModuleProgress GetModuleProgress(string moduleId)
+    {
+        if (_progress?.ModuleProgress.TryGetValue(moduleId, out var progress) == true)
+        {
+            return progress;
+        }
+        return new ModuleProgress { ModuleId = moduleId };
+    }
+
+    private string GetLevelBadgeClass(DifficultyLevel level) => level switch
+    {
+        DifficultyLevel.Novice => "bg-success-subtle text-success",
+        DifficultyLevel.Beginner => "bg-info-subtle text-info",
+        DifficultyLevel.Intermediate => "bg-warning-subtle text-warning",
+        DifficultyLevel.Advanced => "bg-danger-subtle text-danger",
+        DifficultyLevel.Expert => "bg-dark text-white",
+        _ => "bg-secondary"
+    };
+
+    private string GetLessonTypeBadgeClass(LessonType type) => type switch
+    {
+        LessonType.Theory => "bg-secondary-subtle text-secondary",
+        LessonType.Tutorial => "bg-primary-subtle text-primary",
+        LessonType.Lab => "bg-warning-subtle text-warning",
+        LessonType.Assessment => "bg-info-subtle text-info",
+        _ => "bg-secondary"
+    };
+
+    private string GetLessonTypeIcon(LessonType type) => type switch
+    {
+        LessonType.Theory => "bi-book",
+        LessonType.Tutorial => "bi-code-square",
+        LessonType.Lab => "bi-terminal",
+        LessonType.Assessment => "bi-clipboard-check",
+        _ => "bi-file-text"
+    };
+}

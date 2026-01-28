@@ -1,0 +1,230 @@
+@using AILearningApp.Models
+
+<div class="quiz-component">
+    <div class="quiz-header mb-4">
+        <h4 class="mb-2">
+            <i class="bi bi-question-circle me-2"></i>@Quiz.Title
+        </h4>
+        <p class="text-muted">Test your understanding. You need @Quiz.PassingScore% to pass.</p>
+    </div>
+
+    @if (!_isSubmitted)
+    {
+        <div class="quiz-questions">
+            @foreach (var question in Quiz.Questions)
+            {
+                var index = Quiz.Questions.IndexOf(question) + 1;
+                <div class="question-card card mb-4">
+                    <div class="card-body">
+                        <div class="question-header d-flex justify-content-between align-items-start mb-3">
+                            <h6 class="mb-0">
+                                <span class="badge bg-primary me-2">@index</span>
+                                @question.Question
+                            </h6>
+                            <span class="badge bg-secondary">@question.Points pt@(question.Points > 1 ? "s" : "")</span>
+                        </div>
+
+                        <div class="options">
+                            @foreach (var option in question.Options)
+                            {
+                                var isSelected = _selectedAnswers.TryGetValue(question.Id, out var selectedId) && selectedId == option.Id;
+                                
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" 
+                                           type="radio" 
+                                           name="@question.Id" 
+                                           id="@($"{question.Id}_{option.Id}")"
+                                           checked="@isSelected"
+                                           @onchange="() => SelectAnswer(question.Id, option.Id)" />
+                                    <label class="form-check-label" for="@($"{question.Id}_{option.Id}")">
+                                        @option.Text
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="quiz-submit text-end">
+            <button class="btn btn-primary btn-lg" 
+                    @onclick="SubmitQuiz"
+                    disabled="@(_selectedAnswers.Count < Quiz.Questions.Count)">
+                <i class="bi bi-check2-circle me-2"></i>Submit Quiz
+            </button>
+            <p class="text-muted small mt-2">
+                @_selectedAnswers.Count / @Quiz.Questions.Count questions answered
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="quiz-results">
+            <div class="result-summary card mb-4 @(_passed ? "border-success" : "border-danger")">
+                <div class="card-body text-center py-4">
+                    @if (_passed)
+                    {
+                        <i class="bi bi-trophy fs-1 text-success mb-2"></i>
+                        <h4 class="text-success">Congratulations!</h4>
+                    }
+                    else
+                    {
+                        <i class="bi bi-emoji-frown fs-1 text-danger mb-2"></i>
+                        <h4 class="text-danger">Not Quite</h4>
+                    }
+                    <p class="h2 mb-0">@_score%</p>
+                    <p class="text-muted">@_correctCount / @Quiz.Questions.Count correct</p>
+                </div>
+            </div>
+
+            <h5 class="mb-3">Review Your Answers</h5>
+
+            @foreach (var question in Quiz.Questions)
+            {
+                var index = Quiz.Questions.IndexOf(question) + 1;
+                var selectedId = _selectedAnswers.GetValueOrDefault(question.Id);
+                var selectedOption = question.Options.FirstOrDefault(o => o.Id == selectedId);
+                var correctOption = question.Options.FirstOrDefault(o => o.IsCorrect);
+                var isCorrect = selectedOption?.IsCorrect == true;
+
+                <div class="question-review card mb-3 @(isCorrect ? "border-success" : "border-danger")">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">
+                                @if (isCorrect)
+                                {
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                                }
+                                @question.Question
+                            </h6>
+                        </div>
+
+                        <div class="options mb-3">
+                            @foreach (var option in question.Options)
+                            {
+                                var isSelectedOption = option.Id == selectedId;
+                                var optionClass = "";
+                                
+                                if (option.IsCorrect)
+                                {
+                                    optionClass = "text-success fw-bold";
+                                }
+                                else if (isSelectedOption && !option.IsCorrect)
+                                {
+                                    optionClass = "text-danger text-decoration-line-through";
+                                }
+
+                                <div class="@optionClass mb-1">
+                                    @if (option.IsCorrect)
+                                    {
+                                        <i class="bi bi-check me-1"></i>
+                                    }
+                                    else if (isSelectedOption)
+                                    {
+                                        <i class="bi bi-x me-1"></i>
+                                    }
+                                    else
+                                    {
+                                        <span class="ms-3"></span>
+                                    }
+                                    @option.Text
+                                </div>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(question.Explanation))
+                        {
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>Explanation:</strong> @question.Explanation
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="quiz-actions mt-4 d-flex justify-content-between">
+                <button class="btn btn-outline-secondary" @onclick="RetakeQuiz">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i>Retake Quiz
+                </button>
+                
+                @if (_passed)
+                {
+                    <button class="btn btn-success" @onclick="CompleteQuiz">
+                        <i class="bi bi-arrow-right me-2"></i>Continue
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Quiz Quiz { get; set; } = default!;
+
+    [Parameter]
+    public string ModuleId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string LessonId { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<(int Score, bool Passed)> OnComplete { get; set; }
+
+    private Dictionary<string, string> _selectedAnswers = new();
+    private bool _isSubmitted = false;
+    private int _score = 0;
+    private int _correctCount = 0;
+    private bool _passed = false;
+
+    private void SelectAnswer(string questionId, string optionId)
+    {
+        _selectedAnswers[questionId] = optionId;
+    }
+
+    private void SubmitQuiz()
+    {
+        _correctCount = 0;
+        var totalPoints = 0;
+        var earnedPoints = 0;
+
+        foreach (var question in Quiz.Questions)
+        {
+            totalPoints += question.Points;
+            
+            if (_selectedAnswers.TryGetValue(question.Id, out var selectedId))
+            {
+                var selectedOption = question.Options.FirstOrDefault(o => o.Id == selectedId);
+                if (selectedOption?.IsCorrect == true)
+                {
+                    _correctCount++;
+                    earnedPoints += question.Points;
+                }
+            }
+        }
+
+        _score = totalPoints > 0 ? (int)Math.Round((double)earnedPoints / totalPoints * 100) : 0;
+        _passed = _score >= Quiz.PassingScore;
+        _isSubmitted = true;
+    }
+
+    private void RetakeQuiz()
+    {
+        _selectedAnswers.Clear();
+        _isSubmitted = false;
+        _score = 0;
+        _correctCount = 0;
+        _passed = false;
+    }
+
+    private async Task CompleteQuiz()
+    {
+        await OnComplete.InvokeAsync((_score, _passed));
+    }
+}

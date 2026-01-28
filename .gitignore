@@ -1,0 +1,47 @@
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+
+# VS Code
+.vscode/
+
+# Rider
+.idea/
+
+# User secrets
+secrets.json
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+publish/
+
+# NuGet
+*.nupkg
+**/packages/*
+
+# Test results
+TestResults/

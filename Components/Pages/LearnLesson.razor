@@ -1,0 +1,432 @@
+@page "/learn/{ModuleId}/{LessonId}"
+@using AILearningApp.Models
+@using AILearningApp.Services
+@using Microsoft.JSInterop
+@inject IContentService ContentService
+@inject IProgressService ProgressService
+@inject IAzureOpenAIService OpenAIService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>@(_lesson?.Title ?? "Lesson") - AI Learning Hub</PageTitle>
+
+@if (_module != null && _lesson != null)
+{
+    <div class="lesson-container">
+        <div class="container-fluid">
+            <div class="row">
+                <!-- Sidebar -->
+                <div class="col-md-3 col-lg-2 lesson-sidebar d-none d-md-block">
+                    <div class="sidebar-content p-3">
+                        <a href="/module/@ModuleId" class="btn btn-link text-decoration-none mb-3 p-0">
+                            <i class="bi bi-arrow-left me-2"></i>Back to Module
+                        </a>
+                        
+                        <h6 class="text-muted small mb-3">@_module.Title</h6>
+                        
+                        <nav class="lesson-nav">
+                            @foreach (var navLesson in _module.Lessons.OrderBy(l => l.Order))
+                            {
+                                var isActive = navLesson.Id == LessonId;
+                                var lessonProgress = GetLessonProgress(navLesson.Id);
+                                
+                                <a href="/learn/@ModuleId/@navLesson.Id" 
+                                   class="lesson-nav-item d-flex align-items-center py-2 px-2 rounded text-decoration-none 
+                                          @(isActive ? "active bg-primary text-white" : "text-body")">
+                                    <span class="lesson-nav-icon me-2">
+                                        @if (lessonProgress.IsCompleted)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                        }
+                                        else if (isActive)
+                                        {
+                                            <i class="bi bi-circle-fill"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-circle"></i>
+                                        }
+                                    </span>
+                                    <span class="small">@navLesson.Title</span>
+                                </a>
+                            }
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Main Content -->
+                <div class="col-md-9 col-lg-10">
+                    <div class="lesson-content py-4 px-4">
+                        <!-- Lesson Header -->
+                        <div class="lesson-header mb-4">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <span class="badge @GetLessonTypeBadgeClass(_lesson.Type)">
+                                            <i class="bi @GetLessonTypeIcon(_lesson.Type) me-1"></i>@_lesson.Type
+                                        </span>
+                                        <span class="text-muted small">
+                                            <i class="bi bi-clock me-1"></i>@_lesson.EstimatedMinutes min
+                                        </span>
+                                    </div>
+                                    <h1 class="h3">@_lesson.Title</h1>
+                                    <p class="text-muted">@_lesson.Description</p>
+                                </div>
+                                <div class="d-md-none">
+                                    <button class="btn btn-outline-secondary" @onclick="ToggleMobileSidebar">
+                                        <i class="bi bi-list"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tabs for content sections -->
+                        <ul class="nav nav-tabs mb-4" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link @(_activeTab == "content" ? "active" : "")" 
+                                        @onclick='() => _activeTab = "content"'>
+                                    <i class="bi bi-book me-2"></i>Content
+                                </button>
+                            </li>
+                            @if (_lesson.Lab != null)
+                            {
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link @(_activeTab == "lab" ? "active" : "")" 
+                                            @onclick='() => _activeTab = "lab"'>
+                                        <i class="bi bi-terminal me-2"></i>Lab
+                                    </button>
+                                </li>
+                            }
+                            @if (_lesson.Quiz != null)
+                            {
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link @(_activeTab == "quiz" ? "active" : "")" 
+                                            @onclick='() => _activeTab = "quiz"'>
+                                        <i class="bi bi-question-circle me-2"></i>Quiz
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content">
+                            @if (_activeTab == "content")
+                            {
+                                <div class="content-sections">
+                                    @foreach (var contentSection in _lesson.Sections.OrderBy(s => s.Order))
+                                    {
+                                        <div class="content-section mb-5">
+                                            @if (!string.IsNullOrEmpty(contentSection.Title))
+                                            {
+                                                <h4 class="section-title mb-3">@contentSection.Title</h4>
+                                            }
+                                            <div class="section-content">
+                                                @((MarkupString)ConvertMarkdownToHtml(contentSection.Content))
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="lesson-navigation mt-5 pt-4 border-top">
+                                        <div class="row">
+                                            <div class="col-6">
+                                                @if (_previousLesson != null)
+                                                {
+                                                    <a href="/learn/@ModuleId/@_previousLesson.Id" class="btn btn-outline-secondary">
+                                                        <i class="bi bi-arrow-left me-2"></i>Previous
+                                                    </a>
+                                                }
+                                            </div>
+                                            <div class="col-6 text-end">
+                                                @if (_lesson.Lab != null || _lesson.Quiz != null)
+                                                {
+                                                    <button class="btn btn-primary" 
+                                                            @onclick='() => _activeTab = _lesson.Lab != null ? "lab" : "quiz"'>
+                                                        Continue to @(_lesson.Lab != null ? "Lab" : "Quiz")
+                                                        <i class="bi bi-arrow-right ms-2"></i>
+                                                    </button>
+                                                }
+                                                else if (_nextLesson != null)
+                                                {
+                                                    <button class="btn btn-success" @onclick="CompleteAndContinue">
+                                                        Complete & Continue
+                                                        <i class="bi bi-arrow-right ms-2"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-success" @onclick="CompleteModule">
+                                                        Complete Module
+                                                        <i class="bi bi-check-lg ms-2"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else if (_activeTab == "lab" && _lesson.Lab != null)
+                            {
+                                <LabComponent Lab="_lesson.Lab" 
+                                             ModuleId="@ModuleId" 
+                                             LessonId="@LessonId" 
+                                             OnComplete="OnLabComplete" />
+                            }
+                            else if (_activeTab == "quiz" && _lesson.Quiz != null)
+                            {
+                                <QuizComponent Quiz="_lesson.Quiz" 
+                                              ModuleId="@ModuleId" 
+                                              LessonId="@LessonId" 
+                                              OnComplete="OnQuizComplete" />
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_loading)
+{
+    <div class="container py-5 text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+
+<style>
+    .lesson-sidebar {
+        background: var(--bs-body-bg);
+        border-right: 1px solid var(--bs-border-color);
+        height: calc(100vh - 56px);
+        position: sticky;
+        top: 56px;
+        overflow-y: auto;
+    }
+
+    .lesson-nav-item:hover:not(.active) {
+        background: var(--bs-tertiary-bg);
+    }
+
+    .lesson-content {
+        max-width: 900px;
+    }
+
+    .section-content pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        overflow-x: auto;
+    }
+
+    .section-content code {
+        font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    }
+
+    .section-content table {
+        width: 100%;
+        margin: 1rem 0;
+        border-collapse: collapse;
+    }
+
+    .section-content th,
+    .section-content td {
+        padding: 0.75rem;
+        border: 1px solid var(--bs-border-color);
+    }
+
+    .section-content th {
+        background: var(--bs-tertiary-bg);
+        font-weight: 600;
+    }
+
+    .section-content blockquote {
+        border-left: 4px solid var(--bs-primary);
+        padding-left: 1rem;
+        margin: 1rem 0;
+        color: var(--bs-secondary);
+    }
+
+    .section-content h2 { font-size: 1.5rem; margin-top: 2rem; }
+    .section-content h3 { font-size: 1.25rem; margin-top: 1.5rem; }
+    .section-content h4 { font-size: 1.1rem; margin-top: 1rem; }
+</style>
+
+@code {
+    [Parameter]
+    public string ModuleId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string LessonId { get; set; } = string.Empty;
+
+    private LearningModule? _module;
+    private Models.Lesson? _lesson;
+    private Models.Lesson? _previousLesson;
+    private Models.Lesson? _nextLesson;
+    private bool _loading = true;
+    private string _activeTab = "content";
+    private bool _showMobileSidebar = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLesson();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadLesson();
+    }
+
+    private async Task LoadLesson()
+    {
+        _loading = true;
+        _activeTab = "content";
+
+        _module = await ContentService.GetModuleByIdAsync(ModuleId);
+        _lesson = await ContentService.GetLessonAsync(ModuleId, LessonId);
+
+        if (_module != null && _lesson != null)
+        {
+            var orderedLessons = _module.Lessons.OrderBy(l => l.Order).ToList();
+            var currentIndex = orderedLessons.FindIndex(l => l.Id == LessonId);
+            
+            _previousLesson = currentIndex > 0 ? orderedLessons[currentIndex - 1] : null;
+            _nextLesson = currentIndex < orderedLessons.Count - 1 ? orderedLessons[currentIndex + 1] : null;
+
+            // Mark lesson as started
+            await ProgressService.MarkLessonStartedAsync(ModuleId, LessonId);
+        }
+
+        _loading = false;
+    }
+
+    private LessonProgress GetLessonProgress(string lessonId)
+    {
+        // This would need to be loaded from progress service
+        return new LessonProgress { LessonId = lessonId };
+    }
+
+    private void ToggleMobileSidebar()
+    {
+        _showMobileSidebar = !_showMobileSidebar;
+    }
+
+    private async Task CompleteAndContinue()
+    {
+        await ProgressService.MarkLessonCompletedAsync(ModuleId, LessonId);
+        if (_nextLesson != null)
+        {
+            Navigation.NavigateTo($"/learn/{ModuleId}/{_nextLesson.Id}");
+        }
+    }
+
+    private async Task CompleteModule()
+    {
+        await ProgressService.MarkLessonCompletedAsync(ModuleId, LessonId);
+        Navigation.NavigateTo($"/module/{ModuleId}");
+    }
+
+    private async Task OnLabComplete()
+    {
+        if (_lesson?.Lab != null)
+        {
+            await ProgressService.MarkLabCompletedAsync(ModuleId, LessonId, _lesson.Lab.Id);
+        }
+
+        if (_lesson?.Quiz != null)
+        {
+            _activeTab = "quiz";
+        }
+        else if (_nextLesson != null)
+        {
+            await CompleteAndContinue();
+        }
+        else
+        {
+            await CompleteModule();
+        }
+    }
+
+    private async Task OnQuizComplete((int Score, bool Passed) result)
+    {
+        if (_lesson?.Quiz != null)
+        {
+            await ProgressService.SaveQuizResultAsync(ModuleId, LessonId, _lesson.Quiz.Id, result.Score, result.Passed);
+        }
+
+        if (result.Passed && _nextLesson != null)
+        {
+            Navigation.NavigateTo($"/learn/{ModuleId}/{_nextLesson.Id}");
+        }
+    }
+
+    private string GetLessonTypeBadgeClass(LessonType type) => type switch
+    {
+        LessonType.Theory => "bg-secondary-subtle text-secondary",
+        LessonType.Tutorial => "bg-primary-subtle text-primary",
+        LessonType.Lab => "bg-warning-subtle text-warning",
+        LessonType.Assessment => "bg-info-subtle text-info",
+        _ => "bg-secondary"
+    };
+
+    private string GetLessonTypeIcon(LessonType type) => type switch
+    {
+        LessonType.Theory => "bi-book",
+        LessonType.Tutorial => "bi-code-square",
+        LessonType.Lab => "bi-terminal",
+        LessonType.Assessment => "bi-clipboard-check",
+        _ => "bi-file-text"
+    };
+
+    private string ConvertMarkdownToHtml(string markdown)
+    {
+        // Simple markdown to HTML conversion (basic implementation)
+        // In production, use a library like Markdig
+        var html = markdown;
+
+        // Headers
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^#### (.+)$", "<h4>$1</h4>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^### (.+)$", "<h3>$1</h3>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^## (.+)$", "<h2>$1</h2>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^# (.+)$", "<h1>$1</h1>", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Bold and Italic
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*(.+?)\*", "<em>$1</em>");
+
+        // Code blocks
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"```(\w+)?\n([\s\S]*?)```", "<pre><code>$2</code></pre>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"`(.+?)`", "<code>$1</code>");
+
+        // Blockquotes
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^> (.+)$", "<blockquote>$1</blockquote>", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Tables (basic)
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\|(.+)\|", m => {
+            var cells = m.Value.Trim('|').Split('|');
+            if (m.Value.Contains("---")) return "";
+            var isHeader = !html.Substring(0, html.IndexOf(m.Value)).Contains("<td>");
+            var tag = isHeader && !html.Contains("<tbody>") ? "th" : "td";
+            return $"<tr>{string.Join("", cells.Select(c => $"<{tag}>{c.Trim()}</{tag}>"))}</tr>";
+        });
+
+        // Wrap tables
+        if (html.Contains("<tr>"))
+        {
+            html = System.Text.RegularExpressions.Regex.Replace(html, @"(<tr>.*?</tr>\s*)+", "<table class='table table-bordered'>$0</table>");
+        }
+
+        // Line breaks
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\n\n", "</p><p>");
+        html = $"<p>{html}</p>";
+        html = html.Replace("<p></p>", "");
+        html = html.Replace("<p><h", "<h").Replace("</h1></p>", "</h1>").Replace("</h2></p>", "</h2>").Replace("</h3></p>", "</h3>").Replace("</h4></p>", "</h4>");
+        html = html.Replace("<p><pre>", "<pre>").Replace("</pre></p>", "</pre>");
+        html = html.Replace("<p><table", "<table").Replace("</table></p>", "</table>");
+        html = html.Replace("<p><blockquote>", "<blockquote>").Replace("</blockquote></p>", "</blockquote>");
+
+        return html;
+    }
+}

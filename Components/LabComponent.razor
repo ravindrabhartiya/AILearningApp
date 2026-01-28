@@ -1,0 +1,285 @@
+@using AILearningApp.Models
+@using AILearningApp.Services
+@inject IAzureOpenAIService OpenAIService
+
+<div class="lab-component">
+    <div class="lab-header mb-4">
+        <h4 class="mb-2">
+            <i class="bi bi-terminal me-2"></i>@Lab.Title
+        </h4>
+        <p class="text-muted">@Lab.Description</p>
+    </div>
+
+    @if (!OpenAIService.IsConfigured)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Azure OpenAI not configured.</strong>
+            <p class="mb-2">To use the interactive labs, please configure your Azure OpenAI connection.</p>
+            <a href="/settings" class="btn btn-warning btn-sm">
+                <i class="bi bi-gear me-2"></i>Configure Now
+            </a>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="lab-instructions">
+                <h5 class="mb-3"><i class="bi bi-list-check me-2"></i>Instructions</h5>
+                <div class="instructions-content p-3 bg-body-tertiary rounded-3">
+                    @((MarkupString)ConvertMarkdownToHtml(Lab.Instructions))
+                </div>
+
+                @if (Lab.Hints.Any())
+                {
+                    <div class="hints-section mt-4">
+                        <h6 class="mb-2">
+                            <i class="bi bi-lightbulb me-2"></i>Hints
+                            <span class="badge bg-secondary ms-2">@_hintsRevealed / @Lab.Hints.Count</span>
+                        </h6>
+                        @foreach (var hint in Lab.Hints.OrderBy(h => h.Order).Take(_hintsRevealed))
+                        {
+                            <div class="alert alert-info py-2 small">
+                                <i class="bi bi-info-circle me-2"></i>@hint.Content
+                            </div>
+                        }
+                        @if (_hintsRevealed < Lab.Hints.Count)
+                        {
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="RevealNextHint">
+                                <i class="bi bi-eye me-2"></i>Reveal Hint
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="lab-workspace">
+                <!-- System Prompt (collapsible) -->
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center"
+                            @onclick="() => _showSystemPrompt = !_showSystemPrompt">
+                        <span><i class="bi bi-gear me-2"></i>System Prompt</span>
+                        <i class="bi @(_showSystemPrompt ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                    </button>
+                    @if (_showSystemPrompt)
+                    {
+                        <div class="mt-2">
+                            <textarea class="form-control font-monospace small" 
+                                      rows="6" 
+                                      @bind="_systemPrompt"
+                                      placeholder="System prompt..."></textarea>
+                        </div>
+                    }
+                </div>
+
+                <!-- User Input -->
+                <div class="mb-3">
+                    <label class="form-label fw-medium">
+                        <i class="bi bi-chat-left-text me-2"></i>User Message
+                    </label>
+                    <textarea class="form-control" 
+                              rows="6" 
+                              @bind="_userMessage"
+                              placeholder="Enter your prompt here..."></textarea>
+                </div>
+
+                <!-- Parameters -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small">Temperature: @_temperature.ToString("F1")</label>
+                        <input type="range" class="form-range" min="0" max="2" step="0.1" @bind="_temperature" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small">Max Tokens: @_maxTokens</label>
+                        <input type="range" class="form-range" min="100" max="2000" step="100" @bind="_maxTokens" />
+                    </div>
+                </div>
+
+                <!-- Send Button -->
+                <div class="d-flex gap-2 mb-4">
+                    <button class="btn btn-primary" @onclick="SendRequest" disabled="@(_isLoading || !OpenAIService.IsConfigured)">
+                        @if (_isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Sending...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send me-2"></i>
+                            <span>Send Request</span>
+                        }
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="ResetToStarter" disabled="@_isLoading">
+                        <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                    </button>
+                </div>
+
+                <!-- Response -->
+                @if (!string.IsNullOrEmpty(_response) || !string.IsNullOrEmpty(_error))
+                {
+                    <div class="response-section">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0"><i class="bi bi-chat-right-text me-2"></i>Response</h6>
+                            @if (_lastResult != null)
+                            {
+                                <small class="text-muted">
+                                    @(_lastResult.ExecutionTimeMs.ToString("F0"))ms
+                                    @if (_lastResult.TokenUsage != null)
+                                    {
+                                        <span class="ms-2">| @_lastResult.TokenUsage.TotalTokens tokens</span>
+                                    }
+                                </small>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_error))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-octagon me-2"></i>@_error
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="response-content p-3 bg-body-tertiary rounded-3 border">
+                                <pre class="mb-0" style="white-space: pre-wrap; font-family: inherit;">@_response</pre>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <!-- Complete Lab Button -->
+                @if (!string.IsNullOrEmpty(_response))
+                {
+                    <div class="mt-4 text-end">
+                        <button class="btn btn-success" @onclick="CompleteLab">
+                            <i class="bi bi-check-circle me-2"></i>Mark Lab Complete & Continue
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Lab Lab { get; set; } = default!;
+
+    [Parameter]
+    public string ModuleId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string LessonId { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback OnComplete { get; set; }
+
+    private string _systemPrompt = string.Empty;
+    private string _userMessage = string.Empty;
+    private double _temperature = 0.7;
+    private int _maxTokens = 1000;
+    private bool _isLoading = false;
+    private string _response = string.Empty;
+    private string _error = string.Empty;
+    private LabExecutionResult? _lastResult;
+    private int _hintsRevealed = 0;
+    private bool _showSystemPrompt = false;
+
+    protected override void OnParametersSet()
+    {
+        _systemPrompt = Lab.SystemPrompt;
+        _userMessage = Lab.StarterCode;
+        
+        if (Lab.Parameters.TryGetValue("temperature", out var temp))
+        {
+            _temperature = Convert.ToDouble(temp);
+        }
+        if (Lab.Parameters.TryGetValue("max_tokens", out var tokens))
+        {
+            _maxTokens = Convert.ToInt32(tokens);
+        }
+    }
+
+    private async Task SendRequest()
+    {
+        if (string.IsNullOrWhiteSpace(_userMessage))
+            return;
+
+        _isLoading = true;
+        _error = string.Empty;
+        _response = string.Empty;
+
+        try
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                { "temperature", _temperature },
+                { "max_tokens", _maxTokens }
+            };
+
+            _lastResult = await OpenAIService.SendChatCompletionAsync(_systemPrompt, _userMessage, parameters);
+
+            if (_lastResult.IsSuccess)
+            {
+                _response = _lastResult.Response;
+            }
+            else
+            {
+                _error = _lastResult.ErrorMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ResetToStarter()
+    {
+        _userMessage = Lab.StarterCode;
+        _systemPrompt = Lab.SystemPrompt;
+        _response = string.Empty;
+        _error = string.Empty;
+        
+        if (Lab.Parameters.TryGetValue("temperature", out var temp))
+        {
+            _temperature = Convert.ToDouble(temp);
+        }
+        if (Lab.Parameters.TryGetValue("max_tokens", out var tokens))
+        {
+            _maxTokens = Convert.ToInt32(tokens);
+        }
+    }
+
+    private void RevealNextHint()
+    {
+        if (_hintsRevealed < Lab.Hints.Count)
+        {
+            _hintsRevealed++;
+        }
+    }
+
+    private async Task CompleteLab()
+    {
+        await OnComplete.InvokeAsync();
+    }
+
+    private string ConvertMarkdownToHtml(string markdown)
+    {
+        var html = markdown;
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^### (.+)$", "<h5>$1</h5>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^## (.+)$", "<h4>$1</h4>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^- (.+)$", "<li>$1</li>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"(<li>.*</li>\s*)+", "<ul>$0</ul>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^\d+\. (.+)$", "<li>$1</li>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = html.Replace("\n\n", "<br/><br/>");
+        return html;
+    }
+}
