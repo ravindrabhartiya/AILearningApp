@@ -1,5 +1,7 @@
 using AILearningApp.Models;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace AILearningApp.Services;
@@ -18,28 +20,68 @@ public interface IProgressService
     Task<int> GetOverallProgressPercentageAsync(List<LearningModule> allModules);
     Task UpdateSettingsAsync(UserSettings settings);
     Task ResetProgressAsync();
+    bool IsAuthenticated { get; }
+    string? UserDisplayName { get; }
 }
 
 public class ProgressService : IProgressService
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly ILogger<ProgressService> _logger;
+    private readonly AuthenticationStateProvider _authStateProvider;
+    private readonly CloudProgressService _cloudProgressService;
     private const string StorageKey = "ai_learning_progress";
     private UserProgress? _cachedProgress;
+    private ClaimsPrincipal? _user;
+    private bool _authStateInitialized;
 
-    public ProgressService(IJSRuntime jsRuntime, ILogger<ProgressService> logger)
+    public ProgressService(
+        IJSRuntime jsRuntime, 
+        ILogger<ProgressService> logger,
+        AuthenticationStateProvider authStateProvider,
+        CloudProgressService cloudProgressService)
     {
         _jsRuntime = jsRuntime;
         _logger = logger;
+        _authStateProvider = authStateProvider;
+        _cloudProgressService = cloudProgressService;
+    }
+
+    public bool IsAuthenticated => _user?.Identity?.IsAuthenticated ?? false;
+    
+    public string? UserDisplayName => _user?.Identity?.Name ?? 
+        _user?.Claims.FirstOrDefault(c => c.Type == "name")?.Value;
+
+    private string? UserId => _user?.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+    private string? UserEmail => _user?.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+
+    private async Task EnsureAuthStateAsync()
+    {
+        if (!_authStateInitialized)
+        {
+            var authState = await _authStateProvider.GetAuthenticationStateAsync();
+            _user = authState.User;
+            _authStateInitialized = true;
+        }
     }
 
     public async Task<UserProgress> GetProgressAsync()
     {
+        await EnsureAuthStateAsync();
+
         if (_cachedProgress != null)
             return _cachedProgress;
 
         try
         {
+            // If authenticated, use cloud storage
+            if (IsAuthenticated && !string.IsNullOrEmpty(UserId))
+            {
+                _cachedProgress = await _cloudProgressService.GetProgressAsync(UserId, UserEmail ?? "");
+                return _cachedProgress;
+            }
+
+            // Otherwise, use local storage
             var json = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", StorageKey);
             if (!string.IsNullOrEmpty(json))
             {
@@ -52,7 +94,7 @@ public class ProgressService : IProgressService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading progress from local storage");
+            _logger.LogError(ex, "Error loading progress");
             _cachedProgress = new UserProgress();
         }
 
@@ -61,16 +103,28 @@ public class ProgressService : IProgressService
 
     public async Task SaveProgressAsync(UserProgress progress)
     {
+        await EnsureAuthStateAsync();
+
         try
         {
             progress.LastActivityAt = DateTime.UtcNow;
+            
+            // If authenticated, save to cloud
+            if (IsAuthenticated && !string.IsNullOrEmpty(UserId))
+            {
+                await _cloudProgressService.SaveProgressAsync(UserId, UserEmail ?? "", UserDisplayName ?? "", progress);
+                _cachedProgress = progress;
+                return;
+            }
+
+            // Otherwise, save to local storage
             var json = JsonSerializer.Serialize(progress);
             await _jsRuntime.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
             _cachedProgress = progress;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving progress to local storage");
+            _logger.LogError(ex, "Error saving progress");
         }
     }
 

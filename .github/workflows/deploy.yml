@@ -70,3 +70,8 @@ jobs:
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           imageToDeploy: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          environmentVariables: |
+            ApplicationInsights__ConnectionString=${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
+            AzureStorage__ConnectionString=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+            Authentication__Google__ClientId=${{ secrets.GOOGLE_CLIENT_ID }}
+            Authentication__Google__ClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }}
