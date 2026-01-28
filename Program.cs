@@ -4,6 +4,9 @@ using AILearningApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add Application Insights telemetry for visitor tracking
+builder.Services.AddApplicationInsightsTelemetry();
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
