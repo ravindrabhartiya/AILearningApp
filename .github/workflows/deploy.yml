@@ -62,14 +62,29 @@ jobs:
           docker build -t ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
           docker push ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: Deploy to Azure Container Apps
+      - name: Deploy new revision (zero-downtime)
         run: |
+          # Create new revision with unique suffix
+          REVISION_SUFFIX=$(echo ${{ github.sha }} | cut -c1-8)
+          
           az containerapp update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --revision-suffix $REVISION_SUFFIX \
+            --min-replicas 1 \
             --set-env-vars \
               "ApplicationInsights__ConnectionString=${{ secrets.APPINSIGHTS_CONNECTION_STRING }}" \
               "AzureStorage__ConnectionString=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
               "Authentication__Google__ClientId=${{ secrets.GOOGLE_CLIENT_ID }}" \
               "Authentication__Google__ClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }}"
+          
+          # Wait for new revision to be ready
+          echo "Waiting for new revision to be ready..."
+          sleep 30
+          
+          # Verify the new revision is running
+          az containerapp revision list \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[?properties.runningState=='Running'].name" -o tsv

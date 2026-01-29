@@ -94,6 +94,9 @@ app.MapGet("/logout", async (HttpContext context) =>
     context.Response.Redirect("/");
 });
 
+// Health check endpoint for zero-downtime deployments
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
