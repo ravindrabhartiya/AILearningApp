@@ -27,6 +27,16 @@ builder.Services.AddAuthentication(options =>
     options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
     options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
     options.SaveTokens = true;
+    options.CallbackPath = "/signin-google";
+});
+
+// Configure forwarded headers for reverse proxy (Azure Container Apps)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | 
+                                Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 builder.Services.AddCascadingAuthenticationState();
@@ -49,6 +59,9 @@ builder.Services.AddHttpClient<IAzureOpenAIService, AzureOpenAIService>(client =
 });
 
 var app = builder.Build();
+
+// Use forwarded headers (must be first for reverse proxy support)
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
